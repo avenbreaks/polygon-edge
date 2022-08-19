@@ -293,6 +293,7 @@ func (d *DiscoveryService) regularPeerDiscovery() {
 	if peerID == nil {
 		// The node cannot find a random peer to query from the current peer set
 		// We need to use bootnodes to find peers again
+		d.logger.Error("we can't find any peers to sync peer set, failing over to bootnodes")
 		d.bootnodeFailoverDiscovery <- true
 
 		return

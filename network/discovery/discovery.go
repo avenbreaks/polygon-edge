@@ -25,10 +25,6 @@ const (
 	// peerDiscoveryInterval is the interval at which other
 	// peers are queried for their peer sets
 	peerDiscoveryInterval = 5 * time.Second
-
-	// bootnodeDiscoveryInterval is the interval at which
-	// random bootnodes are dialed for their peer sets
-	bootnodeDiscoveryInterval = 60 * time.Second
 )
 
 // networkingServer defines the base communication interface between
@@ -91,7 +87,8 @@ type DiscoveryService struct {
 	logger       hclog.Logger     // The DiscoveryService logger
 	routingTable *kb.RoutingTable // Kademlia 'k-bucket' routing table that contains connected nodes info
 
-	closeCh chan struct{} // Channel used for stopping the DiscoveryService
+	closeCh                   chan struct{} // Channel used for stopping the DiscoveryService
+	bootnodeFailoverDiscovery chan bool     // Triggers finding peers via bootnodes in case we don't have any peers
 }
 
 // NewDiscoveryService creates a new instance of the discovery service
@@ -246,7 +243,7 @@ func (d *DiscoveryService) findPeersCall(
 		},
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not find peers via discovery, %w", err)
 	}
 
 	// Check if the connection should be closed after getting the data
@@ -264,11 +261,10 @@ func (d *DiscoveryService) findPeersCall(
 // and random bootnodes are dialed for their peer sets
 func (d *DiscoveryService) startDiscovery() {
 	peerDiscoveryTicker := time.NewTicker(peerDiscoveryInterval)
-	bootnodeDiscoveryTicker := time.NewTicker(bootnodeDiscoveryInterval)
 
 	defer func() {
 		peerDiscoveryTicker.Stop()
-		bootnodeDiscoveryTicker.Stop()
+		close(d.bootnodeFailoverDiscovery)
 	}()
 
 	for {
@@ -277,7 +273,7 @@ func (d *DiscoveryService) startDiscovery() {
 			return
 		case <-peerDiscoveryTicker.C:
 			go d.regularPeerDiscovery()
-		case <-bootnodeDiscoveryTicker.C:
+		case <-d.bootnodeFailoverDiscovery:
 			go d.bootnodePeerDiscovery()
 		}
 	}
@@ -295,8 +291,10 @@ func (d *DiscoveryService) regularPeerDiscovery() {
 	// Grab a random peer from the base server's peer store
 	peerID := d.baseServer.GetRandomPeer()
 	if peerID == nil {
-		// The node cannot find a random peer to query
-		// from the current peer set
+		// The node cannot find a random peer to query from the current peer set
+		// We need to use bootnodes to find peers again
+		d.bootnodeFailoverDiscovery <- true
+
 		return
 	}
 
@@ -364,7 +362,7 @@ func (d *DiscoveryService) bootnodePeerDiscovery() {
 	// Find peers from the referenced bootnode
 	foundNodes, err := d.findPeersCall(bootnode.ID, true)
 	if err != nil {
-		d.logger.Error("Unable to execute bootnode peer discovery, %w", err)
+		d.logger.Error("Unable to execute bootnode peer discovery, err=", err)
 
 		return
 	}

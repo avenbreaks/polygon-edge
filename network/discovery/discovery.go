@@ -243,17 +243,37 @@ func (d *DiscoveryService) findPeersCall(
 		},
 	)
 	if err != nil {
+		// We could not get any peers from an existing peer due to an error.
+		// Querying the bootnodes for peers list
+		d.logger.Error("could not get peers set from other peer, "+
+			"trying to get it from bootnode", "peerID", peerID)
+		d.bootnodeFailoverDiscovery <- true
+
+		// Close this discovery stream
+		if discCloseErr := d.closeDiscoveryStream(peerID); err != nil {
+			d.logger.Error(discCloseErr.Error())
+		}
+
+		// and return an error
 		return nil, fmt.Errorf("could not find peers via discovery, %w", err)
 	}
 
 	// Check if the connection should be closed after getting the data
 	if shouldCloseConn {
-		if closeErr := d.baseServer.CloseProtocolStream(common.DiscProto, peerID); closeErr != nil {
+		if closeErr := d.closeDiscoveryStream(peerID); closeErr != nil {
 			return nil, closeErr
 		}
 	}
 
 	return resp.Nodes, nil
+}
+
+func (d *DiscoveryService) closeDiscoveryStream(peerID peer.ID) error {
+	if err := d.baseServer.CloseProtocolStream(common.DiscProto, peerID); err != nil {
+		return fmt.Errorf("could not close discovery stream: %w", err)
+	}
+
+	return nil
 }
 
 // startDiscovery starts the DiscoveryService loop,

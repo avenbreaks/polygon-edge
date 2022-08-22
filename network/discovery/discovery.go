@@ -25,6 +25,10 @@ const (
 	// peerDiscoveryInterval is the interval at which other
 	// peers are queried for their peer sets
 	peerDiscoveryInterval = 5 * time.Second
+
+	// bootnodeDiscoveryInterval is the interval at which
+	// random bootnodes are dialed for their peer sets
+	bootnodeDiscoveryInterval = 60 * time.Second
 )
 
 // networkingServer defines the base communication interface between
@@ -209,6 +213,8 @@ func (d *DiscoveryService) addPeersToTable(nodeAddrStrs []string) {
 			)
 		}
 	}
+
+	d.logger.Debug("discovered peers added to peer store")
 }
 
 // attemptToFindPeers dials the specified peer and requests
@@ -282,9 +288,11 @@ func (d *DiscoveryService) closeDiscoveryStream(peerID peer.ID) error {
 // and random bootnodes are dialed for their peer sets
 func (d *DiscoveryService) startDiscovery() {
 	peerDiscoveryTicker := time.NewTicker(peerDiscoveryInterval)
+	bootnodeDiscoveryTicker := time.NewTicker(bootnodeDiscoveryInterval)
 
 	defer func() {
 		peerDiscoveryTicker.Stop()
+		bootnodeDiscoveryTicker.Stop()
 		close(d.bootnodeFailoverDiscovery)
 	}()
 
@@ -293,11 +301,17 @@ func (d *DiscoveryService) startDiscovery() {
 		case <-d.closeCh:
 			return
 		case <-peerDiscoveryTicker.C:
-			d.logger.Debug("running peer discovery")
+			d.logger.Debug("running peer discovery at a regular interval",
+				"interval", peerDiscoveryInterval.String())
 
 			go d.regularPeerDiscovery()
+		case <-bootnodeDiscoveryTicker.C:
+			d.logger.Error("running bootnode peer discovery at a regular interval",
+				"interval", bootnodeDiscoveryInterval.String())
+
+			go d.bootnodePeerDiscovery()
 		case <-d.bootnodeFailoverDiscovery:
-			d.logger.Error("running bootnode peer discovery")
+			d.logger.Error("running failover bootnode peer discovery")
 
 			go d.bootnodePeerDiscovery()
 		}

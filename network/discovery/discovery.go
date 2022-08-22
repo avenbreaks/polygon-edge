@@ -250,7 +250,7 @@ func (d *DiscoveryService) findPeersCall(
 		},
 	)
 	if err != nil {
-		d.logger.Error("Could not get peers set from other peer", "peerID", peerID)
+		d.logger.Debug("Could not get peers set from other peer", "peerID", peerID)
 
 		// Close this discovery stream
 		if discCloseErr := d.closeDiscoveryStream(peerID, shouldCloseConn); err != nil {
@@ -307,12 +307,12 @@ func (d *DiscoveryService) startDiscovery() {
 
 			go d.regularPeerDiscovery()
 		case <-bootnodeDiscoveryTicker.C:
-			d.logger.Error("Running peer discovery using a bootnode at a regular interval",
+			d.logger.Debug("Running peer discovery using a bootnode at a regular interval",
 				"interval", bootnodeDiscoveryInterval.String())
 
 			go d.bootnodePeerDiscovery()
 		case <-d.bootnodeFailoverDiscovery:
-			d.logger.Error("Running fail-over bootnode peer discovery")
+			d.logger.Debug("Running fail-over bootnode peer discovery")
 
 			go d.bootnodePeerDiscovery()
 		}

@@ -597,7 +597,8 @@ func (s *Server) NewProtoConnection(protocol string, peerID peer.ID) (*rawGrpc.C
 
 	stream, err := s.NewStream(protocol, peerID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not open a stream to [%s] with protocol [%s] , err=%w",
+			peerID.String(), protocol, err)
 	}
 
 	return p.Client(stream), nil

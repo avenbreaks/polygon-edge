@@ -98,10 +98,11 @@ func NewDiscoveryService(
 	logger hclog.Logger,
 ) *DiscoveryService {
 	return &DiscoveryService{
-		logger:       logger.Named("discovery"),
-		baseServer:   server,
-		routingTable: routingTable,
-		closeCh:      make(chan struct{}),
+		logger:                    logger.Named("discovery"),
+		baseServer:                server,
+		routingTable:              routingTable,
+		closeCh:                   make(chan struct{}),
+		bootnodeFailoverDiscovery: make(chan bool),
 	}
 }
 
@@ -292,8 +293,12 @@ func (d *DiscoveryService) startDiscovery() {
 		case <-d.closeCh:
 			return
 		case <-peerDiscoveryTicker.C:
+			d.logger.Debug("running peer discovery")
+
 			go d.regularPeerDiscovery()
 		case <-d.bootnodeFailoverDiscovery:
+			d.logger.Error("running bootnode peer discovery")
+
 			go d.bootnodePeerDiscovery()
 		}
 	}
@@ -331,7 +336,7 @@ func (d *DiscoveryService) regularPeerDiscovery() {
 	}
 }
 
-// bootnodeDiscovery queries a random (unconnected) bootnode for new peers
+// bootnodePeerDiscovery queries a random (unconnected) bootnode for new peers
 // and adds them to the routing table
 func (d *DiscoveryService) bootnodePeerDiscovery() {
 	if !d.baseServer.HasFreeConnectionSlot(network.DirOutbound) {

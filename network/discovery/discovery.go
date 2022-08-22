@@ -221,13 +221,13 @@ func (d *DiscoveryService) addPeersToTable(nodeAddrStrs []string) {
 // to see their peer list
 func (d *DiscoveryService) attemptToFindPeers(peerID peer.ID) error {
 	d.logger.Debug("Querying a peer for near peers", "peer", peerID)
-	nodes, err := d.findPeersCall(peerID, false)
 
+	nodes, err := d.findPeersCall(peerID, false)
 	if err != nil {
 		return err
 	}
 
-	d.logger.Debug("Found new near peers", "peer", len(nodes))
+	d.logger.Debug("Found new near peers", "peers", len(nodes))
 	d.addPeersToTable(nodes)
 
 	return nil
@@ -250,34 +250,35 @@ func (d *DiscoveryService) findPeersCall(
 		},
 	)
 	if err != nil {
-		// We could not get any peers from an existing peer due to an error.
-		// Querying the bootnodes for peers list
-		d.logger.Error("could not get peers set from other peer, "+
-			"trying to get it from bootnode", "peerID", peerID)
-		d.bootnodeFailoverDiscovery <- true
+		d.logger.Error("Could not get peers set from other peer", "peerID", peerID)
 
 		// Close this discovery stream
-		if discCloseErr := d.closeDiscoveryStream(peerID); err != nil {
+		if discCloseErr := d.closeDiscoveryStream(peerID, shouldCloseConn); err != nil {
 			d.logger.Error(discCloseErr.Error())
 		}
 
 		// and return an error
-		return nil, fmt.Errorf("could not find peers via discovery, %w", err)
+		return nil, fmt.Errorf("could not find peers via discovery: %w", err)
 	}
 
 	// Check if the connection should be closed after getting the data
-	if shouldCloseConn {
-		if closeErr := d.closeDiscoveryStream(peerID); closeErr != nil {
-			return nil, closeErr
-		}
+	if closeErr := d.closeDiscoveryStream(peerID, shouldCloseConn); closeErr != nil {
+		return nil, closeErr
 	}
 
 	return resp.Nodes, nil
 }
 
-func (d *DiscoveryService) closeDiscoveryStream(peerID peer.ID) error {
-	if err := d.baseServer.CloseProtocolStream(common.DiscProto, peerID); err != nil {
-		return fmt.Errorf("could not close discovery stream: %w", err)
+// closeDiscoveryStream closes the discovery stream if it is a temporary connection
+func (d *DiscoveryService) closeDiscoveryStream(peerID peer.ID, shouldClose bool) error {
+	if shouldClose {
+		if err := d.baseServer.CloseProtocolStream(common.DiscProto, peerID); err != nil {
+			return fmt.Errorf("could not close discovery stream: %w", err)
+		}
+
+		d.logger.Debug("Discovery stream with peer closed", "peer", peerID.String())
+	} else {
+		d.logger.Debug("Discovery stream with peer is not temporary, not closing", "peer", peerID.String())
 	}
 
 	return nil
@@ -301,17 +302,17 @@ func (d *DiscoveryService) startDiscovery() {
 		case <-d.closeCh:
 			return
 		case <-peerDiscoveryTicker.C:
-			d.logger.Debug("running peer discovery at a regular interval",
+			d.logger.Debug("Running regular peer discovery at a regular interval",
 				"interval", peerDiscoveryInterval.String())
 
 			go d.regularPeerDiscovery()
 		case <-bootnodeDiscoveryTicker.C:
-			d.logger.Error("running bootnode peer discovery at a regular interval",
+			d.logger.Error("Running peer discovery using a bootnode at a regular interval",
 				"interval", bootnodeDiscoveryInterval.String())
 
 			go d.bootnodePeerDiscovery()
 		case <-d.bootnodeFailoverDiscovery:
-			d.logger.Error("running failover bootnode peer discovery")
+			d.logger.Error("Running fail-over bootnode peer discovery")
 
 			go d.bootnodePeerDiscovery()
 		}
@@ -332,7 +333,8 @@ func (d *DiscoveryService) regularPeerDiscovery() {
 	if peerID == nil {
 		// The node cannot find a random peer to query from the current peer set
 		// We need to use bootnodes to find peers again
-		d.logger.Error("we can't find any peers to sync peer set, failing over to bootnodes")
+		d.logger.Error("Can't find any peers to sync the peer set with, " +
+			"querying bootnodes for peer set")
 		d.bootnodeFailoverDiscovery <- true
 
 		return
@@ -402,7 +404,7 @@ func (d *DiscoveryService) bootnodePeerDiscovery() {
 	// Find peers from the referenced bootnode
 	foundNodes, err := d.findPeersCall(bootnode.ID, true)
 	if err != nil {
-		d.logger.Error("Unable to execute bootnode peer discovery, err=", err)
+		d.logger.Error("Unable to execute bootnode peer discovery:", "err", err.Error())
 
 		return
 	}

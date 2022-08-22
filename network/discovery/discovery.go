@@ -276,9 +276,9 @@ func (d *DiscoveryService) closeDiscoveryStream(peerID peer.ID, shouldClose bool
 			return fmt.Errorf("could not close discovery stream: %w", err)
 		}
 
-		d.logger.Debug("Discovery stream with peer closed", "peer", peerID.String())
+		d.logger.Debug("Discovery stream with peer closed", "peer", peerID)
 	} else {
-		d.logger.Debug("Discovery stream with peer is not temporary, not closing", "peer", peerID.String())
+		d.logger.Debug("Discovery stream with peer is not temporary, not closing", "peer", peerID)
 	}
 
 	return nil

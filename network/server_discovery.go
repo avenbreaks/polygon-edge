@@ -26,12 +26,12 @@ var (
 func (s *Server) GetRandomBootnode() *peer.AddrInfo {
 	nonConnectedNodes := make([]*peer.AddrInfo, 0)
 
-	for _, v := range s.bootnodes.getBootnodes() {
-		if !s.hasPeer(v.ID) {
-			nonConnectedNodes = append(nonConnectedNodes, v)
-		}
-	}
+	//for _, v := range s.bootnodes.getBootnodes() {
+	//if !s.hasPeer(v.ID) {
+	//}
+	//}
 
+	nonConnectedNodes = append(nonConnectedNodes, s.bootnodes.getBootnodes()...)
 	if len(nonConnectedNodes) > 0 {
 		randNum, _ := rand.Int(rand.Reader, big.NewInt(int64(len(nonConnectedNodes))))
 

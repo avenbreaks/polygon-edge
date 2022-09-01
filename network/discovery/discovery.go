@@ -227,6 +227,13 @@ func (d *DiscoveryService) attemptToFindPeers(peerID peer.ID) error {
 		return err
 	}
 
+	if len(nodes) == 0 {
+		nodes, err = d.findPeersCall(peerID, true)
+		if err != nil {
+			return err
+		}
+	}
+
 	d.logger.Debug("Found new near peers", "peers", len(nodes))
 	d.addPeersToTable(nodes)
 
